@@ -1,0 +1,50 @@
+<script>
+  (function () {
+    const containerId = 'toast-container';
+    let container = document.getElementById(containerId);
+    if (!container) {
+      container = document.createElement('div');
+      container.id = containerId;
+      container.style.position = 'fixed';
+      container.style.right = '1rem';
+      container.style.bottom = '1rem';
+      container.style.zIndex = 999999;
+      container.style.display = 'flex';
+      container.style.flexDirection = 'column';
+      container.style.gap = '0.5rem';
+      document.body.appendChild(container);
+    }
+
+    window.showToast = function (type = 'info', message = '', timeout = 4000) {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'shadow-lg p-3 rounded-lg';
+      wrapper.style.minWidth = '220px';
+      wrapper.style.maxWidth = '360px';
+      wrapper.style.display = 'flex';
+      wrapper.style.alignItems = 'center';
+
+      // Visuals via classes + inline fallback
+      if (type === 'success') {
+        wrapper.classList.add('bg-green-100', 'text-green-800');
+      } else if (type === 'error') {
+        wrapper.classList.add('bg-red-100', 'text-red-800');
+      } else {
+        wrapper.classList.add('bg-gray-100', 'text-gray-800');
+      }
+
+      wrapper.innerHTML = `<div style="flex:1">${message}</div>
+        <button aria-label="fechar" style="margin-left:8px; background:none; border:none; cursor:pointer">✕</button>`;
+
+      const btn = wrapper.querySelector('button');
+      btn.addEventListener('click', () => {
+        container.removeChild(wrapper);
+      });
+
+      container.appendChild(wrapper);
+
+      setTimeout(() => {
+        if (container.contains(wrapper)) container.removeChild(wrapper);
+      }, timeout);
+    };
+  })();
+</script>

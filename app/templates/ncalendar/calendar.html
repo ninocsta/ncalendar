@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+
+<head>
+  <meta charset="utf-8" />
+  <title>Agenda</title>
+
+  <!-- FullCalendar Scheduler -->
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar-scheduler@6.1.19/index.global.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@fullcalendar/core@6.1.19/locales/pt-br.global.js"></script>
+
+  <!-- jQuery (Select2 depende dele) -->
+  <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
+
+  <!-- Select2 -->
+  <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+
+  <!-- DaisyUI + Tailwind (CDN browser build) -->
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@5" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+
+  <style>
+    /* container */
+    #calendar { max-width: 1100px; margin: 20px auto; }
+    .modal-box form { display:flex; flex-direction:column; gap:10px; }
+
+    /* Select2 visual adjustments to match inputs */
+    .select2-container .select2-selection--single {
+      height: 40px;
+      border: 1px solid #d1d5db;
+      border-radius: .5rem;
+      padding: 0 0.5rem;
+    }
+    .select2-container--default .select2-selection__rendered { line-height: 38px; padding-left: 8px; }
+    .select2-container--default .select2-selection__arrow { height: 38px; }
+    .text-error { color: #dc2626; } /* tailwind red-600 */
+  </style>
+</head>
+
+<body>
+  <!-- toast include -->
+  {% include 'partials/toast.html' %}
+
+  <div id="calendar"></div>
+
+  <!-- Modal -->
+  <dialog id="modalSchedule" class="modal">
+    <div class="modal-box">
+      <h3 class="text-lg font-bold mb-2">Novo Agendamento</h3>
+
+      <form id="formSchedule" method="dialog" class="space-y-2">
+        <label>
+          Profissional
+          <select id="selectProfessional" class="select w-full"></select>
+          <p id="errProfessional" class="text-error text-sm mt-1"></p>
+        </label>
+
+        <label>
+          Cliente
+          <select id="selectClient" class="select w-full"></select>
+          <p id="errClient" class="text-error text-sm mt-1"></p>
+        </label>
+
+        <label>
+          Serviço
+          <select id="selectService" class="select w-full"></select>
+          <p id="errService" class="text-error text-sm mt-1"></p>
+        </label>
+
+        <label>
+          Duração (min)
+          <input id="inputDuration" type="number" class="input w-full" min="1" />
+          <p id="errDuration" class="text-error text-sm mt-1"></p>
+        </label>
+
+        <label>
+          Valor (R$)
+          <input id="inputValue" type="text" class="input w-full" />
+          <p id="errValue" class="text-error text-sm mt-1"></p>
+        </label>
+
+        <label>
+          Início
+          <input id="inputStart" type="datetime-local" class="input w-full" />
+          <p id="errStart" class="text-error text-sm mt-1"></p>
+        </label>
+
+        <div class="flex justify-end gap-2 mt-2">
+          <button type="button" class="btn" onclick="modalSchedule.close()">Fechar</button>
+          <button type="submit" class="btn btn-primary">Salvar</button>
+        </div>
+      </form>
+    </div>
+  </dialog>
+
+  <script>
+    (function () {
+      /* ---------------------------
+         Utilitários: API, helpers
+         --------------------------- */
+      const api = {
+        async get(url, params = {}) {
+          const q = new URLSearchParams(params).toString();
+          const final = q ? `${url}?${q}` : url;
+          const res = await fetch(final, { credentials: 'same-origin' });
+          if (!res.ok) throw res;
+          return res.json();
+        },
+        async post(url, body) {
+          const csrftoken = (document.cookie.match('(^|;)\\s*csrftoken\\s*=\\s*([^;]+)') || [])[2] || '';
+          const res = await fetch(url, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
+            body: JSON.stringify(body)
+          });
+          if (!res.ok) throw res;
+          return res.json();
+        }
+      };
+
+      function fillSelect(selectEl, items, valueKey = 'id', textKey = 'name', placeholderOpt = null) {
+        const html = (placeholderOpt ? `<option value="">${placeholderOpt}</option>` : '') +
+          items.map(i => `<option value="${i[valueKey]}">${i[textKey]}</option>`).join('');
+        selectEl.innerHTML = html;
+      }
+
+      function minutesToHMS(minutes) {
+        const m = Math.max(0, parseInt(minutes || 0, 10));
+        const h = Math.floor(m / 60);
+        const mm = m % 60;
+        const pad = s => String(s).padStart(2, '0');
+        return `${pad(h)}:${pad(mm)}:00`; // HH:MM:SS
+      }
+
+      function clearErrors() {
+        document.querySelectorAll('[id^="err"]').forEach(e => e.textContent = '');
+      }
+
+      function showFieldError(id, msg) {
+        const el = document.getElementById(id);
+        if (el) el.textContent = msg;
+      }
+
+      function validateFields(fields) {
+        // fields: { fieldId: { value, required?, numeric?, min? , errId, message } }
+        clearErrors();
+        let ok = true;
+        for (const key in fields) {
+          const cfg = fields[key];
+          const v = cfg.value;
+          if (cfg.required && (v === null || v === undefined || String(v).trim() === '')) {
+            showFieldError(cfg.errId, cfg.message || 'Campo obrigatório');
+            ok = false; continue;
+          }
+          if (cfg.numeric) {
+            const n = Number(v);
+            if (isNaN(n) || (cfg.min !== undefined && n < cfg.min)) {
+              showFieldError(cfg.errId, cfg.message || 'Valor inválido');
+              ok = false;
+            }
+          }
+        }
+        return ok;
+      }
+
+      function initSelect2(el, opts = {}) {
+        // destroy if exists
+        if ($(el).data('select2')) $(el).select2('destroy');
+        $(el).select2(opts);
+      }
+
+      /* ---------------------------
+         DOM references
+         --------------------------- */
+      const modal = document.getElementById('modalSchedule');
+      const selectProfessional = document.getElementById('selectProfessional');
+      const selectClient = document.getElementById('selectClient');
+      const selectService = document.getElementById('selectService');
+      const inputDuration = document.getElementById('inputDuration');
+      const inputValue = document.getElementById('inputValue');
+      const inputStart = document.getElementById('inputStart');
+      const form = document.getElementById('formSchedule');
+
+      let serviceCache = []; // keep last fetched services for lookup
+
+      /* ---------------------------
+         FullCalendar init
+         --------------------------- */
+      const calendar = new FullCalendar.Calendar(document.getElementById('calendar'), {
+        schedulerLicenseKey: "CC-Attribution-NonCommercial-NoDerivatives",
+        initialView: "resourceTimeGridDay",
+        locale: 'pt-br',
+        timeZone: 'America/Sao_Paulo',
+        headerToolbar: { left: "prev,next,today", center: "title" },
+        nowIndicator: true,
+        slotMinTime: "07:00:00",
+        slotMaxTime: "22:00:00",
+        editable: false,
+        selectable: false,
+        height: "auto",
+        resources: "/api/professionals/",
+        events: "/api/events/",
+        dateClick: async function (info) {
+          try {
+            // profissionais já carregados pelo calendar (resources)
+            const resources = calendar.getResources();
+            fillSelect(selectProfessional, resources.map(r => ({ id: r.id, name: r.title || r.id })), 'id', 'name');
+
+            if (info.resource) selectProfessional.value = info.resource.id;
+
+            // carregar serviços (cache primeira vez)
+            try {
+              const services = await api.get('/api/services/');
+              serviceCache = services;
+              fillSelect(selectService, services, 'id', 'name', 'Selecione um serviço...');
+              // init Select2 on service (allowSearch)
+              initSelect2(selectService, {
+                placeholder: 'Busque um serviço...',
+                dropdownParent: $(modal),
+                allowClear: true,
+                width: '100%'
+              });
+            } catch (err) {
+              console.error('Erro ao buscar serviços', err);
+            }
+
+            // init client select2 with AJAX (search)
+            try {
+              // initial small suggestions optional
+              const clientsInitial = await api.get('/api/clients/'); // backend should allow empty q to return recent
+              fillSelect(selectClient, clientsInitial, 'id', 'name', clientsInitial.length ? 'Selecione um cliente...' : null);
+
+              initSelect2(selectClient, {
+                placeholder: 'Busque um cliente...',
+                dropdownParent: $(modal),
+                width: '100%',
+                minimumInputLength: 2,
+                ajax: {
+                  url: '/api/clients/',
+                  dataType: 'json',
+                  delay: 250,
+                  data: function (params) { return { q: params.term }; },
+                  processResults: function (data) {
+                    return {
+                      results: data.map(c => ({ id: c.id, text: c.name }))
+                    };
+                  }
+                }
+              });
+            } catch (err) {
+              console.error('Erro ao inicializar clientes', err);
+            }
+
+            // reset fields
+            inputDuration.value = '';
+            inputValue.value = '';
+            inputStart.value = info.date.toISOString().slice(0, 16);
+
+            // bind service select change via select2 event
+            $(selectService).off('select2:select').on('select2:select', function (e) {
+              const id = e.params?.data?.id;
+              const s = serviceCache.find(x => String(x.id) === String(id));
+              if (s) {
+                // assume backend exposes duration_minutes and value
+                inputDuration.value = s.duration_minutes ?? s.duration ?? '';
+                inputValue.value = s.value ?? '';
+              } else {
+                inputDuration.value = '';
+                inputValue.value = '';
+              }
+            });
+
+            // ensure select2 dropdown is on top
+            $('.select2-container').css('z-index', 99999);
+
+            modal.showModal();
+          } catch (err) {
+            console.error(err);
+            showToast('error', 'Erro ao abrir modal: ' + (err.message || err.statusText || ''));
+          }
+        }
+      });
+
+      calendar.render();
+
+      /* ---------------------------
+         Form submit
+         --------------------------- */
+      form.addEventListener('submit', async function (ev) {
+        ev.preventDefault();
+
+        const professional = $(selectProfessional).val() || selectProfessional.value;
+        const client = $(selectClient).val() || selectClient.value;
+        const service = $(selectService).val() || selectService.value;
+        const durationMinutes = inputDuration.value;
+        const value = inputValue.value;
+        const start = inputStart.value;
+
+        const fields = {
+          professional: { value: professional, required: true, errId: 'errProfessional', message: 'Profissional é obrigatório.' },
+          client: { value: client, required: true, errId: 'errClient', message: 'Cliente é obrigatório.' },
+          service: { value: service, required: true, errId: 'errService', message: 'Serviço é obrigatório.' },
+          duration: { value: durationMinutes, required: true, numeric: true, min: 1, errId: 'errDuration', message: 'Duração (min) inválida.' },
+          value: { value: value, required: true, numeric: true, min: 0, errId: 'errValue', message: 'Valor inválido.' },
+          start: { value: start, required: true, errId: 'errStart', message: 'Início é obrigatório.' }
+        };
+
+        if (!validateFields(fields)) return;
+
+        const payload = {
+          professional: professional,
+          client: client,
+          service: service,
+          start: start,
+          duration: minutesToHMS(durationMinutes),
+          value: value
+        };
+
+        try {
+          await api.post('/api/events/', payload);
+          calendar.refetchEvents();
+          showToast('success', 'Evento criado com sucesso.');
+          modal.close();
+        } catch (resOrErr) {
+          console.error('Erro criando evento', resOrErr);
+          // se for Response, tente JSON
+          if (resOrErr instanceof Response) {
+            const json = await resOrErr.json().catch(() => null);
+            showToast('error', json ? (json.detail || JSON.stringify(json)) : resOrErr.statusText);
+          } else {
+            showToast('error', 'Erro de requisição: ' + (resOrErr.message || resOrErr));
+          }
+        }
+      });
+
+    })();
+  </script>
+</body>
+
+</html>
