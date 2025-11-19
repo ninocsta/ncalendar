@@ -1,64 +1,98 @@
 # ncalendar/api/views.py
 from rest_framework import viewsets
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+from django.core.exceptions import ValidationError as DjangoValidationError
+from rest_framework.exceptions import ValidationError
 from ..models import Professional, Client, Service, Event
 from .serializers import (
-    ProfessionalSerializer,
-    ProfessionalResourceSerializer,
-    ClientSerializer,
-    ServiceSerializer,
-    EventSerializer,
-    EventCalendarSerializer,
+    ProfessionalResourceSerializer, ClientSerializer,
+    ServiceSerializer, EventSerializer, EventCalendarSerializer
 )
 
 
-class ProfessionalViewSet(viewsets.ReadOnlyModelViewSet):
-    """Return professionals formatted for FullCalendar resources (id, title).
-    This is ReadOnly since resources are usually managed separately in admin.
-    """
-    queryset = Professional.objects.all()
+class CompanyFilteredViewSet(viewsets.ModelViewSet):
+    """ViewSet base que filtra automaticamente por company"""
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        return super().get_queryset().filter(company=self.request.user.company)
+    
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+
+class ProfessionalViewSet(CompanyFilteredViewSet):
+    queryset = Professional.objects.filter(active=True)
     serializer_class = ProfessionalResourceSerializer
 
 
-class ClientViewSet(viewsets.ModelViewSet):
+class ClientViewSet(CompanyFilteredViewSet):
     queryset = Client.objects.all()
     serializer_class = ClientSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        q = self.request.query_params.get('q')
+        if q:
+            qs = qs.filter(name__icontains=q)[:50]
+        return qs
+
+
+class ServiceViewSet(viewsets.ReadOnlyModelViewSet):
+    """Serviços filtrados por company e opcionalmente por profissional"""
+    permission_classes = [IsAuthenticated]
+    queryset = Service.objects.filter(active=True)
+    serializer_class = ServiceSerializer
     
     def get_queryset(self):
-        """Allow filtering clients by `q` query param (simple name search).
-        Used by the frontend autocomplete to avoid returning all clients.
-        """
-        qs = super().get_queryset()
-        q = self.request.query_params.get('q') or self.request.query_params.get('search')
-        if q:
-            return qs.filter(name__icontains=q)[:50]
-        # quando não há query, retornar um subconjunto razoável (ex.: últimos 20)
-        return qs.order_by('-id')[:20]
-
-
-class ServiceViewSet(viewsets.ModelViewSet):
-    queryset = Service.objects.all()
-    serializer_class = ServiceSerializer
+        qs = super().get_queryset().filter(company=self.request.user.company)
+        
+        # Filtrar por profissional se especificado
+        professional_id = self.request.query_params.get('professional')
+        if professional_id:
+            qs = qs.filter(professional_id=professional_id)
+        
+        return qs
 
 
 class EventViewSet(viewsets.ModelViewSet):
-    queryset = Event.objects.select_related('service', 'client', 'professional').all()
-    serializer_class = EventSerializer
-
-    def get_serializer_class(self):
-        # For listing (FullCalendar) use the compact calendar serializer
-        if self.action in ['list', 'retrieve']:
-            return EventCalendarSerializer
-        return EventSerializer
-
-    # Filtrar por período para o FullCalendar
+    permission_classes = [IsAuthenticated]
+    
     def get_queryset(self):
-        qs = super().get_queryset()
-
-        start = self.request.query_params.get("start")
-        end = self.request.query_params.get("end")
-
+        qs = Event.objects.filter(
+            professional__company=self.request.user.company
+        ).select_related('client', 'service', 'professional', 'created_by', 'updated_by')
+        
+        start = self.request.query_params.get('start')
+        end = self.request.query_params.get('end')
         if start and end:
-            # filter events that start inside the requested window
-            qs = qs.filter(start__gte=start, start__lt=end)
-
+            qs = qs.filter(end__gt=start, start__lt=end)
         return qs
+    
+    def get_serializer_class(self):
+        return EventCalendarSerializer if self.action == 'list' else EventSerializer
+    
+    def perform_create(self, serializer):
+        """Adiciona created_by automaticamente ao criar"""
+        try:
+            serializer.save(created_by=self.request.user, updated_by=self.request.user)
+        except DjangoValidationError as e:
+            # Converte ValidationError do Django para DRF
+            raise ValidationError(e.message_dict if hasattr(e, 'message_dict') else {'detail': str(e)})
+    
+    def perform_update(self, serializer):
+        """Adiciona updated_by automaticamente ao atualizar"""
+        try:
+            serializer.save(updated_by=self.request.user)
+        except DjangoValidationError as e:
+            # Converte ValidationError do Django para DRF
+            raise ValidationError(e.message_dict if hasattr(e, 'message_dict') else {'detail': str(e)})
+    
+    @action(detail=False, methods=['get'])
+    def status_choices(self, request):
+        return Response([
+            {'value': status[0], 'label': status[1]} 
+            for status in Event.STATUS_CHOICES
+        ])

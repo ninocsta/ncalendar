@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Login - Agenda</title>
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@5" rel="stylesheet" />
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <!-- Bootstrap Icons (apenas para os ícones usados aqui) -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.1/font/bootstrap-icons.min.css">
+</head>
+
+<body class="bg-base-200">
+    <div class="min-h-screen flex items-center justify-center px-4">
+        <div class="card w-full max-w-md bg-base-100 shadow-xl">
+            <div class="card-body">
+                <div class="flex items-center gap-3 justify-center mb-2">
+                    <i class="bi bi-calendar3 text-primary text-3xl"></i>
+                    <h2 class="text-2xl font-bold">Agenda</h2>
+                </div>
+
+                <form method="post" class="space-y-4">
+                    {% csrf_token %}
+
+                    {% if form.non_field_errors %}
+                    <div class="alert alert-error">
+                        {{ form.non_field_errors }}
+                    </div>
+                    {% endif %}
+
+                    <fieldset class="border rounded-lg p-4">
+                        <legend class="px-2 text-sm font-medium">Acesse sua conta</legend>
+
+                        <div class="form-control">
+                            <label class="label">
+                                <span class="label-text">Usuário</span>
+                            </label>
+                            {{ form.username }}
+                            {% if form.username.errors %}
+                            <p class="text-sm text-error mt-1">{{ form.username.errors|striptags }}</p>
+                            {% endif %}
+                        </div>
+
+                        <div class="form-control mt-3">
+                            <label class="label">
+                                <span class="label-text">Senha</span>
+                            </label>
+                            {{ form.password }}
+                            {% if form.password.errors %}
+                            <p class="text-sm text-error mt-1">{{ form.password.errors|striptags }}</p>
+                            {% endif %}
+                        </div>
+
+                        <p class="text-xs text-base-content/60 mt-2">Use suas credenciais para acessar a agenda.</p>
+                    </fieldset>
+
+                    <div class="flex items-center justify-between">
+                        <label class="label cursor-pointer">
+                            <input type="checkbox" name="remember" class="checkbox mr-2" />
+                            <span class="label-text">Lembrar-me</span>
+                        </label>
+                        <a href="#" class="text-sm text-primary">Esqueceu a senha?</a>
+                    </div>
+
+                    <div>
+                        <button type="submit" class="btn btn-primary w-full">Entrar</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>

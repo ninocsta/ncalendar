@@ -39,7 +39,9 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'rest_framework',
 
-    'ncalendar'
+    # Local apps
+    'accounts',
+    'ncalendar',
 ]
 
 MIDDLEWARE = [
@@ -50,7 +52,22 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    # Company middleware to set current company from logged user
+    'ncalendar.middleware.CompanyMiddleware',
 ]
+
+# Custom user model
+AUTH_USER_MODEL = 'accounts.User'
+
+# Django REST Framework defaults
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.SessionAuthentication',
+    ],
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',
+    ],
+}
 
 ROOT_URLCONF = 'app.urls'
 
@@ -117,3 +134,10 @@ USE_TZ = True
 STATIC_URL = 'static/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+
+LOGOUT_REDIRECT_URL = '/'
+# Login URL (matches accounts.urls -> /accounts/login/)
+LOGIN_URL = '/accounts/login/'
+# After login redirect to root calendar page
+LOGIN_REDIRECT_URL = '/'

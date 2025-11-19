@@ -1,342 +1,776 @@
-<!DOCTYPE html>
-<html lang="pt-br">
+{% extends 'base.html' %}
 
-<head>
-  <meta charset="utf-8" />
-  <title>Agenda</title>
+{% block title %}Agenda - Calendário{% endblock %}
 
-  <!-- FullCalendar Scheduler -->
-  <script src="https://cdn.jsdelivr.net/npm/fullcalendar-scheduler@6.1.19/index.global.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@fullcalendar/core@6.1.19/locales/pt-br.global.js"></script>
+{% block content %}
+<div id="calendar"></div>
 
-  <!-- jQuery (Select2 depende dele) -->
-  <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
-
-  <!-- Select2 -->
-  <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
-  <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
-
-  <!-- DaisyUI + Tailwind (CDN browser build) -->
-  <link href="https://cdn.jsdelivr.net/npm/daisyui@5" rel="stylesheet" />
-  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
-
-  <style>
-    /* container */
-    #calendar { max-width: 1100px; margin: 20px auto; }
-    .modal-box form { display:flex; flex-direction:column; gap:10px; }
-
-    /* Select2 visual adjustments to match inputs */
-    .select2-container .select2-selection--single {
-      height: 40px;
-      border: 1px solid #d1d5db;
-      border-radius: .5rem;
-      padding: 0 0.5rem;
-    }
-    .select2-container--default .select2-selection__rendered { line-height: 38px; padding-left: 8px; }
-    .select2-container--default .select2-selection__arrow { height: 38px; }
-    .text-error { color: #dc2626; } /* tailwind red-600 */
-  </style>
-</head>
-
-<body>
-  <!-- toast include -->
-  {% include 'partials/toast.html' %}
-
-  <div id="calendar"></div>
-
-  <!-- Modal -->
-  <dialog id="modalSchedule" class="modal">
-    <div class="modal-box">
-      <h3 class="text-lg font-bold mb-2">Novo Agendamento</h3>
-
-      <form id="formSchedule" method="dialog" class="space-y-2">
-        <label>
-          Profissional
-          <select id="selectProfessional" class="select w-full"></select>
-          <p id="errProfessional" class="text-error text-sm mt-1"></p>
-        </label>
-
-        <label>
-          Cliente
-          <select id="selectClient" class="select w-full"></select>
-          <p id="errClient" class="text-error text-sm mt-1"></p>
-        </label>
-
-        <label>
-          Serviço
-          <select id="selectService" class="select w-full"></select>
-          <p id="errService" class="text-error text-sm mt-1"></p>
-        </label>
-
-        <label>
-          Duração (min)
-          <input id="inputDuration" type="number" class="input w-full" min="1" />
-          <p id="errDuration" class="text-error text-sm mt-1"></p>
-        </label>
-
-        <label>
-          Valor (R$)
-          <input id="inputValue" type="text" class="input w-full" />
-          <p id="errValue" class="text-error text-sm mt-1"></p>
-        </label>
-
-        <label>
-          Início
-          <input id="inputStart" type="datetime-local" class="input w-full" />
-          <p id="errStart" class="text-error text-sm mt-1"></p>
-        </label>
-
-        <div class="flex justify-end gap-2 mt-2">
-          <button type="button" class="btn" onclick="modalSchedule.close()">Fechar</button>
-          <button type="submit" class="btn btn-primary">Salvar</button>
+<!-- Popover do Evento -->
+<div id="eventPopover" class="dropdown dropdown-open">
+  <div class="dropdown-content card card-compact bg-base-100 z-[1000] w-72 shadow-xl border border-base-300">
+    <div class="card-body">
+      <div class="flex items-center gap-2">
+        <h3 class="card-title text-lg" id="popoverTitle"></h3>
+        <!-- Ícone de info que mostra metadados do evento ao passar o mouse -->
+        <button id="popoverInfoIcon" class="btn btn-ghost btn-sm p-1 h-7 w-7 tooltip" type="button" aria-label="Info">
+          <i class="bi bi-info-circle text-base-content/70 text-lg"></i>
+        </button>
+      </div>
+      <div class="space-y-2 text-sm">
+        <div class="flex items-center gap-2">
+          <i class="bi bi-person-fill text-base-content w-4 h-4"></i>
+          <span id="popoverClient" class="font-medium"></span>
         </div>
-      </form>
+        <div class="flex items-center gap-2" id="popoverPhoneContainer">
+          <i class="bi bi-telephone-fill text-base-content w-4 h-4"></i>
+          <span id="popoverPhone"></span>
+        </div>
+        <div class="flex items-center gap-2">
+          <i class="bi bi-clock text-base-content w-4 h-4"></i>
+          <span id="popoverTime"></span>
+        </div>
+        <div class="flex items-center gap-2">
+          <i class="bi bi-check-circle-fill text-base-content w-4 h-4"></i>
+          <span id="popoverStatus" class="font-medium"></span>
+        </div>
+      </div>
+      <div class="card-actions justify-end mt-4">
+        <button class="btn btn-sm btn-primary" id="popoverEditBtn">Editar</button>
+      </div>
     </div>
-  </dialog>
+  </div>
+</div>
+</div>
 
-  <script>
-    (function () {
-      /* ---------------------------
-         Utilitários: API, helpers
-         --------------------------- */
-      const api = {
-        async get(url, params = {}) {
-          const q = new URLSearchParams(params).toString();
-          const final = q ? `${url}?${q}` : url;
-          const res = await fetch(final, { credentials: 'same-origin' });
-          if (!res.ok) throw res;
-          return res.json();
+<!-- Tooltip/metadados do popover (posicionado dinamicamente) -->
+<div id="popoverMeta" style="display:none; position:fixed; z-index:1200; background:var(--b1,#fff); border:1px solid rgba(0,0,0,0.08); padding:8px; border-radius:6px; font-size:0.85rem; box-shadow:0 6px 18px rgba(0,0,0,0.08);"></div>
+
+<!-- Modal Novo/Editar Agendamento -->
+<dialog id="eventModal" class="modal">
+  <div class="modal-box">
+    <h3 class="text-2xl font-bold mb-6" id="modalTitle">Novo Agendamento</h3>
+
+    <form id="eventForm" method="dialog" class="space-y-4">
+      <div id="eventFormErrors" class="text-sm text-error mb-2" style="display:none"></div>
+      <input type="hidden" id="eventId" />
+
+      <div>
+        <label class="label"><span class="label-text font-medium">Profissional</span></label>
+        <select id="professional" class="select w-full" required></select>
+      </div>
+
+      <div id="clientSelectContainer">
+        <label class="label"><span class="label-text font-medium">Cliente</span></label>
+        <select id="client" class="select w-full" required></select>
+      </div>
+
+      <!-- Formulário inline para criar novo cliente (escondido por padrão) -->
+      <div id="newClientContainer" style="display: none;">
+        <div id="newClientErrors" class="text-sm text-error mt-2" style="display:none"></div>
+        <label class="label"><span class="label-text font-medium">Nome do Cliente</span></label>
+        <input id="newClientName" type="text" class="input input-bordered w-full" />
+        <label class="label mt-2"><span class="label-text font-medium">Telefone do Cliente</span></label>
+        <input id="newClientPhone" type="text" class="input input-bordered w-full" placeholder="(00) 00000-0000" />
+        <div class="flex gap-2 justify-end mt-2">
+          <button type="button" id="cancelNewClient" class="btn">Cancelar</button>
+          <button type="button" id="saveNewClient" class="btn btn-primary">Salvar Cliente</button>
+        </div>
+      </div>
+
+      <div>
+        <label class="label"><span class="label-text font-medium">Serviço</span></label>
+        <select id="service" class="select w-full" required></select>
+      </div>
+
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="label"><span class="label-text font-medium">Duração (min)</span></label>
+          <input id="duration" type="number" min="5" class="input input-bordered w-full" required />
+        </div>
+        <div>
+          <label class="label"><span class="label-text font-medium">Valor R$</span></label>
+          <input id="value" type="number" step="0.01" class="input input-bordered w-full" required />
+        </div>
+      </div>
+
+      <div>
+        <label class="label"><span class="label-text font-medium">Início</span></label>
+        <input id="start" type="datetime-local" class="input input-bordered w-full" required />
+      </div>
+
+      <!-- Campo Status (apenas na edição) -->
+      <div id="statusContainer" style="display: none;">
+        <label class="label"><span class="label-text font-medium">Status</span></label>
+        <select id="status" class="select select-bordered w-full">
+          <!-- Opções carregadas dinamicamente -->
+        </select>
+      </div>
+
+      <div class="modal-action">
+        <button type="button" class="btn" onclick="eventModal.close()">Cancelar</button>
+        <button type="submit" class="btn btn-primary" id="submitBtn">Salvar</button>
+      </div>
+    </form>
+  </div>
+</dialog>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    const modal = document.getElementById('eventModal');
+    const form = document.getElementById('eventForm');
+    const miniCalendar = document.getElementById('miniCalendar');
+    let calendar;
+    let statusChoices = [];
+
+    // === HELPERS ===
+    const getCookie = (name) => {
+      const match = document.cookie.match(new RegExp('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)'));
+      return match ? match.pop() : '';
+    };
+
+    const api = {
+      get: (url) => fetch(url, { credentials: 'same-origin' })
+        .then(r => r.ok ? r.json() : Promise.reject(r)),
+
+      post: (url, data) => fetch(url, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': getCookie('csrftoken')
         },
-        async post(url, body) {
-          const csrftoken = (document.cookie.match('(^|;)\\s*csrftoken\\s*=\\s*([^;]+)') || [])[2] || '';
-          const res = await fetch(url, {
-            method: 'POST',
-            credentials: 'same-origin',
-            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
-            body: JSON.stringify(body)
-          });
-          if (!res.ok) throw res;
-          return res.json();
+        body: JSON.stringify(data)
+      }).then(async (r) => {
+        const json = await r.json().catch(() => null);
+        return r.ok ? json : Promise.reject(json || { detail: r.statusText });
+      }),
+
+      put: (url, data) => fetch(url, {
+        method: 'PUT',
+        credentials: 'same-origin',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify(data)
+      }).then(async (r) => {
+        const json = await r.json().catch(() => null);
+        return r.ok ? json : Promise.reject(json || { detail: r.statusText });
+      })
+    };
+
+    const destroySelect2 = (selector) => {
+      const $el = $(selector);
+      if ($el.data('select2')) $el.select2('destroy');
+      $el.empty();
+    };
+
+    const initSelect2 = (id, options = {}) => {
+      $(`#${id}`).select2({
+        dropdownParent: $(modal),
+        width: '100%',
+        ...options
+      });
+    };
+
+    // Renderiza erros de formulário (string, array ou dict) dentro de um elemento
+    function renderErrors(container, err) {
+      if (!container) return;
+      container.style.display = 'none';
+      container.innerHTML = '';
+      if (!err) return;
+
+      const mk = (msg) => `<div>${escapeHtml(String(msg))}</div>`;
+
+      // detalhe simples
+      if (typeof err === 'string') {
+        container.innerHTML = mk(err);
+        container.style.display = 'block';
+        return;
+      }
+
+      // DRF padrão {detail: '...'}
+      if (err.detail) {
+        container.innerHTML = mk(err.detail);
+        container.style.display = 'block';
+        return;
+      }
+
+      // Se for array de mensagens
+      if (Array.isArray(err)) {
+        container.innerHTML = err.map(e => mk(e)).join('');
+        container.style.display = 'block';
+        return;
+      }
+
+      // Se for objeto/dicionário, iterar chaves
+      if (typeof err === 'object') {
+        let html = '';
+        Object.keys(err).forEach(k => {
+          const v = err[k];
+          if (Array.isArray(v)) {
+            v.forEach(item => { html += `<div><strong>${escapeHtml(k)}:</strong> ${escapeHtml(item)}</div>`; });
+          } else if (typeof v === 'object') {
+            html += `<div><strong>${escapeHtml(k)}:</strong> ${escapeHtml(JSON.stringify(v))}</div>`;
+          } else {
+            html += `<div><strong>${escapeHtml(k)}:</strong> ${escapeHtml(v)}</div>`;
+          }
+        });
+        container.innerHTML = html;
+        container.style.display = 'block';
+        return;
+      }
+
+      // fallback
+      container.innerHTML = mk('Erro ao enviar formulário');
+      container.style.display = 'block';
+    }
+
+    // Escape simples para evitar HTML injection
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"'`]/g, function (c) {
+        return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;","`":"&#96;"})[c];
+      });
+    }
+
+    // === FULLCALENDAR ===
+    calendar = new FullCalendar.Calendar(document.getElementById('calendar'), {
+      schedulerLicenseKey: 'CC-Attribution-NonCommercial-NoDerivatives',
+      initialView: 'resourceTimeGridDay',
+      locale: 'pt-br',
+      timeZone: 'America/Sao_Paulo',
+      slotMinTime: '07:00:00',
+      slotMaxTime: '22:00:00',
+      nowIndicator: true,
+      headerToolbar: {
+        left: 'prev,next today',
+        center: 'title',
+        right: 'resourceTimeGridDay,timeGridWeek,dayGridMonth'
+      },
+      resources: '/api/professionals/',
+      events: '/api/events/',
+      selectable: true,
+      selectOverlap: false,
+      select: openModal,
+      eventClick: showEventPopover,
+      datesSet: syncMiniCalendar
+    });
+
+    calendar.render();
+
+    // === SINCRONIZAR MINI CALENDÁRIO ===
+    function syncMiniCalendar(info) {
+      const calendarDate = calendar.getDate();
+      if (miniCalendar && miniCalendar.value !== calendarDate.toISOString().split('T')[0]) {
+        miniCalendar.value = calendarDate.toISOString().split('T')[0];
+      }
+    }
+
+    // Quando clicar no mini calendário, navegar no FullCalendar
+    if (miniCalendar) {
+      miniCalendar.addEventListener('change', (e) => {
+        const selectedDate = new Date(e.target.value + 'T12:00:00');
+        calendar.gotoDate(selectedDate);
+      });
+    }
+
+    // === CARREGAR OPÇÕES DE STATUS ===
+    api.get('/api/events/status_choices/').then(choices => {
+      statusChoices = choices;
+    }).catch(err => {
+      console.error('Erro ao carregar status:', err);
+    });
+
+    // === MOSTRAR POPOVER DO EVENTO ===
+    let closePopoverHandler = null;
+
+    function showEventPopover(info) {
+      const event = info.event;
+      const popover = document.getElementById('eventPopover');
+
+      if (closePopoverHandler) {
+        document.removeEventListener('click', closePopoverHandler);
+        closePopoverHandler = null;
+      }
+
+      popover.classList.remove('show');
+
+      // Batch DOM reads first
+      const rect = info.el.getBoundingClientRect();
+      const popoverHeight = 200;
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const spaceAbove = rect.top;
+
+      // Then batch DOM writes
+      document.getElementById('popoverTitle').textContent = event.title;
+      document.getElementById('popoverClient').textContent = event.extendedProps.client?.name || 'Cliente';
+
+      const phoneContainer = document.getElementById('popoverPhoneContainer');
+      const phone = event.extendedProps.client?.phone || event.extendedProps.clientPhone;
+      if (phone) {
+        document.getElementById('popoverPhone').textContent = phone;
+        phoneContainer.style.display = 'flex';
+      } else {
+        phoneContainer.style.display = 'none';
+      }
+
+      const startTime = event.start.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+      const endTime = event.end ? event.end.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
+      document.getElementById('popoverTime').textContent = endTime ? `${startTime} - ${endTime}` : startTime;
+
+      const statusDisplay = event.extendedProps.statusDisplay || 'Agendado';
+      document.getElementById('popoverStatus').textContent = statusDisplay;
+
+      // Position popover
+      if (spaceBelow < popoverHeight && spaceAbove > spaceBelow) {
+        popover.style.left = `${rect.left + window.scrollX}px`;
+        popover.style.top = `${rect.top + window.scrollY - popoverHeight - 5}px`;
+      } else {
+        popover.style.left = `${rect.left + window.scrollX}px`;
+        popover.style.top = `${rect.bottom + window.scrollY + 5}px`;
+      }
+
+      // Use requestAnimationFrame for smoother animations
+      requestAnimationFrame(() => {
+        popover.classList.add('show');
+      });
+
+      document.getElementById('popoverEditBtn').onclick = () => {
+        popover.classList.remove('show');
+        openEditModal(event);
+      };
+
+      // Info icon: ao passar o mouse, buscar detalhes do evento e mostrar tooltip
+      const infoIcon = document.getElementById('popoverInfoIcon');
+      const metaTip = document.getElementById('popoverMeta');
+      let cachedDetail = null;
+
+      infoIcon.onmouseenter = async (e) => {
+        try {
+          // buscar detalhe do evento apenas uma vez
+          if (!cachedDetail) cachedDetail = await api.get(`/api/events/${event.id}/`);
+          const d = cachedDetail;
+          const createdAt = d.created_at || d.createdAt || '';
+          const updatedAt = d.updated_at || d.updatedAt || '';
+          const createdBy = d.created_by_username || d.created_by || '';
+          const updatedBy = d.updated_by_username || d.updated_by || '';
+
+          // Formatar datas de forma curta e amigável para usuário (pt-BR)
+          const fmt = (iso) => {
+            if (!iso) return '—';
+            try {
+              const dt = new Date(iso);
+              return dt.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+            } catch (e) { return iso; }
+          };
+
+          metaTip.innerHTML = `
+            <div class="font-medium mb-1">Metadados</div>
+            <div><strong>Criado:</strong> ${fmt(createdAt)}</div>
+            <div><strong>Atualizado:</strong> ${fmt(updatedAt)}</div>
+            <div><strong>Criado por:</strong> ${createdBy || '—'}</div>
+            <div><strong>Atualizado por:</strong> ${updatedBy || '—'}</div>
+          `;
+
+          // posicionar próximo ao ícone
+          const r = infoIcon.getBoundingClientRect();
+          const left = Math.min(window.innerWidth - 300, r.right + 6 + window.scrollX);
+          const top = r.top + window.scrollY - 6;
+          metaTip.style.left = `${left}px`;
+          metaTip.style.top = `${top}px`;
+          metaTip.style.display = 'block';
+        } catch (err) {
+          console.error('Erro ao buscar metadados do evento:', err);
         }
       };
 
-      function fillSelect(selectEl, items, valueKey = 'id', textKey = 'name', placeholderOpt = null) {
-        const html = (placeholderOpt ? `<option value="">${placeholderOpt}</option>` : '') +
-          items.map(i => `<option value="${i[valueKey]}">${i[textKey]}</option>`).join('');
-        selectEl.innerHTML = html;
-      }
+      infoIcon.onmouseleave = () => {
+        // esconder com pequeno delay para permitir mover o mouse ao tooltip
+        setTimeout(() => { if (metaTip) metaTip.style.display = 'none'; }, 100);
+      };
 
-      function minutesToHMS(minutes) {
-        const m = Math.max(0, parseInt(minutes || 0, 10));
-        const h = Math.floor(m / 60);
-        const mm = m % 60;
-        const pad = s => String(s).padStart(2, '0');
-        return `${pad(h)}:${pad(mm)}:00`; // HH:MM:SS
-      }
+      // esconder tooltip se o mouse sair do próprio tooltip
+      metaTip.onmouseleave = () => { metaTip.style.display = 'none'; };
 
-      function clearErrors() {
-        document.querySelectorAll('[id^="err"]').forEach(e => e.textContent = '');
-      }
-
-      function showFieldError(id, msg) {
-        const el = document.getElementById(id);
-        if (el) el.textContent = msg;
-      }
-
-      function validateFields(fields) {
-        // fields: { fieldId: { value, required?, numeric?, min? , errId, message } }
-        clearErrors();
-        let ok = true;
-        for (const key in fields) {
-          const cfg = fields[key];
-          const v = cfg.value;
-          if (cfg.required && (v === null || v === undefined || String(v).trim() === '')) {
-            showFieldError(cfg.errId, cfg.message || 'Campo obrigatório');
-            ok = false; continue;
+      setTimeout(() => {
+        closePopoverHandler = (e) => {
+          if (!popover.contains(e.target) && !info.el.contains(e.target)) {
+            popover.classList.remove('show');
+            document.removeEventListener('click', closePopoverHandler);
+            closePopoverHandler = null;
           }
-          if (cfg.numeric) {
-            const n = Number(v);
-            if (isNaN(n) || (cfg.min !== undefined && n < cfg.min)) {
-              showFieldError(cfg.errId, cfg.message || 'Valor inválido');
-              ok = false;
-            }
-          }
-        }
-        return ok;
+        };
+        document.addEventListener('click', closePopoverHandler);
+      }, 10);
+    }
+
+    // === ABRIR MODAL (NOVO) ===
+    async function openModal(info) {
+      form.reset();
+      // limpar áreas de erro ao abrir
+      const ef = document.getElementById('eventFormErrors'); if (ef) { ef.style.display = 'none'; ef.innerHTML = ''; }
+      const ncf = document.getElementById('newClientErrors'); if (ncf) { ncf.style.display = 'none'; ncf.innerHTML = ''; }
+      document.getElementById('eventId').value = '';
+      document.getElementById('modalTitle').textContent = 'Novo Agendamento';
+      document.getElementById('submitBtn').textContent = 'Salvar';
+      document.getElementById('statusContainer').style.display = 'none';
+
+      $('#client, #service').off('change');
+      $(document).off('input', '.select2-container--open .select2-search__field');
+
+      destroySelect2('#professional');
+      $('#professional').append(
+        calendar.getResources().map(r => `<option value="${r.id}">${r.title}</option>`)
+      );
+      initSelect2('professional', { placeholder: 'Selecione um profissional' });
+      if (info.resource) $('#professional').val(info.resource.id).trigger('change');
+      // Quando o profissional mudar, recarregar os serviços
+      // Remover qualquer handler anterior para evitar anexos duplicados
+      $('#professional').off('change');
+      $('#professional').on('change', async function () {
+        const professionalId = $(this).val();
+        if (!professionalId) return;
+        // Ao trocar de profissional, limpar duração e valor (evita manter valores do profissional anterior)
+        $('#duration').val('');
+        $('#value').val('');
+
+        // Carregar apenas serviços deste profissional
+        destroySelect2('#service');
+        const services = await api.get(`/api/services/?professional=${professionalId}`);
+        $('#service').append('<option></option>');
+        services.forEach(s => {
+          $('#service').append(
+            `<option value="${s.id}" data-duration="${s.duration_minutes}" data-value="${s.value}">${s.name}</option>`
+          );
+        });
+        initSelect2('service', { placeholder: 'Selecione o serviço' });
+      });
+
+      $('#start').val(info.start.toISOString().slice(0, 16));
+
+      destroySelect2('#service');
+      // Carregar serviços filtrados pelo profissional selecionado (se houver)
+      const selectedProfessional = $('#professional').val();
+      if (selectedProfessional) {
+        const services = await api.get(`/api/services/?professional=${selectedProfessional}`);
+        $('#service').append('<option></option>');
+        services.forEach(s => {
+          $('#service').append(
+            `<option value="${s.id}" data-duration="${s.duration_minutes}" data-value="${s.value}">${s.name}</option>`
+          );
+        });
+      } else {
+        // Nenhum profissional selecionado — criar select vazio com placeholder
+        $('#service').append('<option></option>');
       }
+      initSelect2('service', { placeholder: 'Selecione o serviço' });
 
-      function initSelect2(el, opts = {}) {
-        // destroy if exists
-        if ($(el).data('select2')) $(el).select2('destroy');
-        $(el).select2(opts);
-      }
+      $('#service').on('change', function () {
+        const opt = $(this).find(':selected');
+        $('#duration').val(opt.data('duration') || '');
+        $('#value').val(opt.data('value') || '');
+      });
 
-      /* ---------------------------
-         DOM references
-         --------------------------- */
-      const modal = document.getElementById('modalSchedule');
-      const selectProfessional = document.getElementById('selectProfessional');
-      const selectClient = document.getElementById('selectClient');
-      const selectService = document.getElementById('selectService');
-      const inputDuration = document.getElementById('inputDuration');
-      const inputValue = document.getElementById('inputValue');
-      const inputStart = document.getElementById('inputStart');
-      const form = document.getElementById('formSchedule');
-
-      let serviceCache = []; // keep last fetched services for lookup
-
-      /* ---------------------------
-         FullCalendar init
-         --------------------------- */
-      const calendar = new FullCalendar.Calendar(document.getElementById('calendar'), {
-        schedulerLicenseKey: "CC-Attribution-NonCommercial-NoDerivatives",
-        initialView: "resourceTimeGridDay",
-        locale: 'pt-br',
-        timeZone: 'America/Sao_Paulo',
-        headerToolbar: { left: "prev,next,today", center: "title" },
-        nowIndicator: true,
-        slotMinTime: "07:00:00",
-        slotMaxTime: "22:00:00",
-        editable: false,
-        selectable: false,
-        height: "auto",
-        resources: "/api/professionals/",
-        events: "/api/events/",
-        dateClick: async function (info) {
-          try {
-            // profissionais já carregados pelo calendar (resources)
-            const resources = calendar.getResources();
-            fillSelect(selectProfessional, resources.map(r => ({ id: r.id, name: r.title || r.id })), 'id', 'name');
-
-            if (info.resource) selectProfessional.value = info.resource.id;
-
-            // carregar serviços (cache primeira vez)
-            try {
-              const services = await api.get('/api/services/');
-              serviceCache = services;
-              fillSelect(selectService, services, 'id', 'name', 'Selecione um serviço...');
-              // init Select2 on service (allowSearch)
-              initSelect2(selectService, {
-                placeholder: 'Busque um serviço...',
-                dropdownParent: $(modal),
-                allowClear: true,
-                width: '100%'
-              });
-            } catch (err) {
-              console.error('Erro ao buscar serviços', err);
-            }
-
-            // init client select2 with AJAX (search)
-            try {
-              // initial small suggestions optional
-              const clientsInitial = await api.get('/api/clients/'); // backend should allow empty q to return recent
-              fillSelect(selectClient, clientsInitial, 'id', 'name', clientsInitial.length ? 'Selecione um cliente...' : null);
-
-              initSelect2(selectClient, {
-                placeholder: 'Busque um cliente...',
-                dropdownParent: $(modal),
-                width: '100%',
-                minimumInputLength: 2,
-                ajax: {
-                  url: '/api/clients/',
-                  dataType: 'json',
-                  delay: 250,
-                  data: function (params) { return { q: params.term }; },
-                  processResults: function (data) {
-                    return {
-                      results: data.map(c => ({ id: c.id, text: c.name }))
-                    };
-                  }
-                }
-              });
-            } catch (err) {
-              console.error('Erro ao inicializar clientes', err);
-            }
-
-            // reset fields
-            inputDuration.value = '';
-            inputValue.value = '';
-            inputStart.value = info.date.toISOString().slice(0, 16);
-
-            // bind service select change via select2 event
-            $(selectService).off('select2:select').on('select2:select', function (e) {
-              const id = e.params?.data?.id;
-              const s = serviceCache.find(x => String(x.id) === String(id));
-              if (s) {
-                // assume backend exposes duration_minutes and value
-                inputDuration.value = s.duration_minutes ?? s.duration ?? '';
-                inputValue.value = s.value ?? '';
-              } else {
-                inputDuration.value = '';
-                inputValue.value = '';
-              }
-            });
-
-            // ensure select2 dropdown is on top
-            $('.select2-container').css('z-index', 99999);
-
-            modal.showModal();
-          } catch (err) {
-            console.error(err);
-            showToast('error', 'Erro ao abrir modal: ' + (err.message || err.statusText || ''));
+      destroySelect2('#client');
+      initSelect2('client', {
+        placeholder: 'Digite o nome do cliente...',
+        minimumInputLength: 2,
+        tags: true,
+        allowClear: true,
+        ajax: {
+          url: '/api/clients/',
+          data: params => ({ q: params.term }),
+          processResults: data => ({
+            results: data.map(c => ({ id: c.id, text: c.name }))
+          }),
+          cache: false
+        },
+        createTag: (params) => {
+          const term = $.trim(params.term);
+          if (!term) return null;
+          return {
+            id: 'new:' + encodeURIComponent(term),
+            text: `Adicionar "${term}"`,
+            newTag: true,
+            name: term
+          };
+        },
+        templateResult: (item) => {
+          if (!item.id) return item.text;
+          if (item.newTag) {
+            return $(`<span><strong>+</strong> ${item.text}</span>`)[0];
           }
+          return item.text;
+        },
+        templateSelection: (item) => {
+          if (item.newTag) return '';
+          return item.text;
+        },
+        escapeMarkup: (m) => m
+      });
+
+      $('#client').on('select2:select', function (e) {
+        const data = e.params.data;
+        if (data.newTag) {
+          // Esconder o select e mostrar formulário de novo cliente
+          const name = data.name || data.text || '';
+          showNewClientForm(name);
+        } else {
+          // Certificar que o formulário de novo cliente está escondido
+          showClientSelect();
         }
       });
 
-      calendar.render();
+      $('#client').on('select2:unselect', function () {
+        // Voltar ao select padrão
+        showClientSelect();
+      });
 
-      /* ---------------------------
-         Form submit
-         --------------------------- */
-      form.addEventListener('submit', async function (ev) {
-        ev.preventDefault();
+      $(document).on('input', '.select2-container--open .select2-search__field', function () {
+        const val = $('#client').val();
+        if (val && !String(val).startsWith('new:')) {
+          $('#client').val(null).trigger('change');
+        }
+      });
 
-        const professional = $(selectProfessional).val() || selectProfessional.value;
-        const client = $(selectClient).val() || selectClient.value;
-        const service = $(selectService).val() || selectService.value;
-        const durationMinutes = inputDuration.value;
-        const value = inputValue.value;
-        const start = inputStart.value;
+      // Handlers para o formulário inline de novo cliente
+      function showNewClientForm(name = '') {
+        document.getElementById('clientSelectContainer').style.display = 'none';
+        document.getElementById('newClientContainer').style.display = 'block';
+        document.getElementById('newClientName').value = name;
+        document.getElementById('newClientName').required = true;
+        // Telefone agora é opcional (pode ser null/blank e unique no modelo)
+        document.getElementById('newClientPhone').required = false;
+        // limpar erros do bloco de novo cliente
+        document.getElementById('newClientErrors').style.display = 'none';
+        setTimeout(() => document.getElementById('newClientName').focus(), 100);
+      }
 
-        const fields = {
-          professional: { value: professional, required: true, errId: 'errProfessional', message: 'Profissional é obrigatório.' },
-          client: { value: client, required: true, errId: 'errClient', message: 'Cliente é obrigatório.' },
-          service: { value: service, required: true, errId: 'errService', message: 'Serviço é obrigatório.' },
-          duration: { value: durationMinutes, required: true, numeric: true, min: 1, errId: 'errDuration', message: 'Duração (min) inválida.' },
-          value: { value: value, required: true, numeric: true, min: 0, errId: 'errValue', message: 'Valor inválido.' },
-          start: { value: start, required: true, errId: 'errStart', message: 'Início é obrigatório.' }
-        };
+      function showClientSelect() {
+        document.getElementById('clientSelectContainer').style.display = 'block';
+        document.getElementById('newClientContainer').style.display = 'none';
+        document.getElementById('newClientName').value = '';
+        document.getElementById('newClientPhone').value = '';
+        document.getElementById('newClientName').required = false;
+        document.getElementById('newClientPhone').required = false;
+      }
 
-        if (!validateFields(fields)) return;
+      document.getElementById('cancelNewClient').onclick = () => {
+        showClientSelect();
+        $('#client').val(null).trigger('change');
+        const ncf = document.getElementById('newClientErrors'); if (ncf) { ncf.style.display = 'none'; ncf.innerHTML = ''; }
+      };
 
-        const payload = {
-          professional: professional,
-          client: client,
-          service: service,
-          start: start,
-          duration: minutesToHMS(durationMinutes),
-          value: value
-        };
+      document.getElementById('saveNewClient').onclick = async () => {
+        const name = document.getElementById('newClientName').value.trim();
+        const phone = document.getElementById('newClientPhone').value.trim();
+        if (!name) { showToast('error', 'Nome é obrigatório'); return; }
+        try {
+          // enviar phone como null quando vazio para respeitar unique + null
+          const payload = { name };
+          if (phone) payload.phone = phone;
+          const created = await api.post('/api/clients/', payload);
+          // Definir o select para o cliente criado
+          $('#client').empty().append(new Option(created.name, created.id, true, true));
+          $('#client').val(created.id).trigger('change');
+          showToast('success', 'Cliente criado com sucesso!');
+          // limpar possíveis erros e voltar ao select
+          document.getElementById('newClientErrors').style.display = 'none';
+          showClientSelect();
+        } catch (err) {
+          // Mostrar erros do formulário dentro do modal (novo cliente)
+          renderErrors(document.getElementById('newClientErrors'), err);
+        }
+      };
+
+      modal.showModal();
+    }
+
+    // === ABRIR MODAL (EDITAR) ===
+    async function openEditModal(event) {
+      $('#client, #service').off('change');
+      $(document).off('input', '.select2-container--open .select2-search__field');
+
+      document.getElementById('eventId').value = event.id;
+      document.getElementById('modalTitle').textContent = 'Editar Agendamento';
+      document.getElementById('submitBtn').textContent = 'Atualizar';
+      document.getElementById('statusContainer').style.display = 'block';
+
+      const eventData = await api.get(`/api/events/${event.id}/`);
+
+      destroySelect2('#professional');
+      $('#professional').append(
+        calendar.getResources().map(r => `<option value="${r.id}">${r.title}</option>`)
+      );
+      initSelect2('professional', { placeholder: 'Selecione um profissional' });
+      $('#professional').val(eventData.professional).trigger('change');
+      // Quando o profissional mudar, recarregar os serviços
+      // Remover qualquer handler anterior para evitar anexos duplicados
+      $('#professional').off('change');
+      $('#professional').on('change', async function () {
+        const professionalId = $(this).val();
+        if (!professionalId) return;
+        // Ao trocar de profissional, limpar duração e valor (evita manter valores do profissional anterior)
+        $('#duration').val('');
+        $('#value').val('');
+
+        // Carregar apenas serviços deste profissional
+        destroySelect2('#service');
+        const services = await api.get(`/api/services/?professional=${professionalId}`);
+        $('#service').append('<option></option>');
+        services.forEach(s => {
+          $('#service').append(
+            `<option value="${s.id}" data-duration="${s.duration_minutes}" data-value="${s.value}">${s.name}</option>`
+          );
+        });
+        initSelect2('service', { placeholder: 'Selecione o serviço' });
+      });
+      $('#start').val(new Date(event.start).toISOString().slice(0, 16));
+
+      destroySelect2('#service');
+      // No modo de edição, tente carregar serviços do profissional associado ao evento
+      const profIdForEdit = eventData.professional || $('#professional').val();
+      if (profIdForEdit) {
+        const services = await api.get(`/api/services/?professional=${profIdForEdit}`);
+        $('#service').append('<option></option>');
+        services.forEach(s => {
+          $('#service').append(
+            `<option value="${s.id}" data-duration="${s.duration_minutes}" data-value="${s.value}">${s.name}</option>`
+          );
+        });
+      } else {
+        $('#service').append('<option></option>');
+      }
+      initSelect2('service', { placeholder: 'Selecione o serviço' });
+      $('#service').val(eventData.service).trigger('change');
+
+      $('#service').on('change', function () {
+        const opt = $(this).find(':selected');
+        $('#duration').val(opt.data('duration') || '');
+        $('#value').val(opt.data('value') || '');
+      });
+
+      destroySelect2('#client');
+      const clients = await api.get('/api/clients/');
+      clients.forEach(c => {
+        $('#client').append(`<option value="${c.id}">${c.name}</option>`);
+      });
+      initSelect2('client', { placeholder: 'Selecione o cliente' });
+      $('#client').val(eventData.client).trigger('change');
+
+      let durationMinutes = 0;
+      if (eventData.duration_minutes) {
+        durationMinutes = eventData.duration_minutes;
+      } else if (event.end && event.start) {
+        durationMinutes = Math.round((new Date(event.end) - new Date(event.start)) / 60000);
+      }
+      $('#duration').val(durationMinutes);
+      $('#value').val(eventData.value || '');
+
+      $('#status').empty();
+      if (statusChoices.length > 0) {
+        statusChoices.forEach(s => {
+          $('#status').append(`<option value="${s.value}">${s.label}</option>`);
+        });
+      } else {
+        $('#status').append(`
+          <option value="1">Agendado</option>
+          <option value="2">Concluído</option>
+          <option value="3">Cancelado</option>
+          <option value="4">Não compareceu</option>
+          <option value="6">Em andamento</option>
+          <option value="7">Pendente pagamento2</option>
+        `);
+      }
+      $('#status').val(eventData.status || 1);
+
+      modal.showModal();
+    }
+
+      // === SUBMIT FORMULÁRIO ===
+    form.onsubmit = async (e) => {
+      e.preventDefault();
+
+      const eventId = document.getElementById('eventId').value;
+      const isEdit = !!eventId;
+
+      // Verificar se é um novo cliente que precisa ser criado (caso o usuário não tenha usado o botão "Salvar Cliente")
+      const clientVal = $('#client').val();
+      let clientId = clientVal;
+
+      if (clientVal && String(clientVal).startsWith('new:')) {
+        const name = decodeURIComponent(String(clientVal).slice(4));
+        // phone é opcional agora
+        const phoneInput = document.getElementById('newClientPhone');
+        const phone = phoneInput ? (phoneInput.value || '').trim() : '';
 
         try {
-          await api.post('/api/events/', payload);
-          calendar.refetchEvents();
-          showToast('success', 'Evento criado com sucesso.');
-          modal.close();
-        } catch (resOrErr) {
-          console.error('Erro criando evento', resOrErr);
-          // se for Response, tente JSON
-          if (resOrErr instanceof Response) {
-            const json = await resOrErr.json().catch(() => null);
-            showToast('error', json ? (json.detail || JSON.stringify(json)) : resOrErr.statusText);
-          } else {
-            showToast('error', 'Erro de requisição: ' + (resOrErr.message || resOrErr));
-          }
+          const payload = { name };
+          if (phone) payload.phone = phone; // enviar apenas quando presente
+          const created = await api.post('/api/clients/', payload);
+          clientId = created.id;
+          // atualizar o select para o novo cliente (caso esteja visível em seguida)
+          $('#client').empty().append(new Option(created.name, created.id, true, true));
+          $('#client').val(created.id).trigger('change');
+          showToast('success', 'Cliente criado com sucesso!');
+        } catch (err) {
+          // mostrar erros do fluxo geral do modal
+          renderErrors(document.getElementById('eventFormErrors'), err);
+          return;
         }
-      });
+      }
 
-    })();
-  </script>
-</body>
+      const payload = {
+        professional: $('#professional').val(),
+        client: clientId,
+        service: $('#service').val(),
+        start: $('#start').val(),
+        duration_minutes: parseInt($('#duration').val()),
+        value: parseFloat($('#value').val())
+      };
 
-</html>
+      if (isEdit) {
+        payload.status = $('#status').val();
+      }
+
+      try {
+        if (isEdit) {
+          await api.put(`/api/events/${eventId}/`, payload);
+          showToast('success', 'Agendamento atualizado!');
+        } else {
+          await api.post('/api/events/', payload);
+          showToast('success', 'Agendamento criado!');
+        }
+
+        calendar.refetchEvents();
+        calendar.unselect();
+        modal.close();
+      } catch (err) {
+        // mostrar erros de validação dentro do modal
+        renderErrors(document.getElementById('eventFormErrors'), err);
+      }
+    };
+
+    // === FECHAR MODAL ===
+    modal.addEventListener('close', () => {
+      form.reset();
+      destroySelect2('#professional');
+      destroySelect2('#client');
+      destroySelect2('#service');
+      // Garantir que não haja handlers remanescentes no select de profissional
+      $('#professional').off('change');
+      $('#client, #service').off('change');
+      $(document).off('input', '.select2-container--open .select2-search__field');
+      
+      // Ocultar possíveis mensagens de erro do modal
+      const ef = document.getElementById('eventFormErrors'); if (ef) { ef.style.display = 'none'; ef.innerHTML = ''; }
+      const ncf = document.getElementById('newClientErrors'); if (ncf) { ncf.style.display = 'none'; ncf.innerHTML = ''; }
+      // Ocultar campo de telefone ao fechar (legacy — só se existir)
+      const phoneContainer = document.getElementById('phoneContainer'); if (phoneContainer) phoneContainer.style.display = 'none';
+      const clientPhone = document.getElementById('clientPhone'); if (clientPhone) clientPhone.required = false;
+    });
+  });
+</script>
+{% endblock %}
