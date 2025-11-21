@@ -1,0 +1,151 @@
+<script>
+  // === MOSTRAR POPOVER DO EVENTO ===
+  let closePopoverHandler = null;
+
+  function showEventPopover(info) {
+    const event = info.event;
+    const popover = document.getElementById('eventPopover');
+
+    if (closePopoverHandler) {
+      try { document.removeEventListener('click', closePopoverHandler, true); } catch (e) { try { document.removeEventListener('click', closePopoverHandler); } catch (_) {} }
+      closePopoverHandler = null;
+    }
+
+    popover.classList.remove('show');
+    // ensure display is reset (in case previous hide left inline styles)
+    popover.style.display = 'none';
+
+    // Batch DOM reads first
+    const rect = info.el.getBoundingClientRect();
+    const popoverHeight = 200;
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const spaceAbove = rect.top;
+
+    // Then batch DOM writes
+    document.getElementById('popoverTitle').textContent = event.title;
+    document.getElementById('popoverClient').textContent = event.extendedProps.client?.name || 'Cliente';
+
+    const phoneContainer = document.getElementById('popoverPhoneContainer');
+    const phone = event.extendedProps.client?.phone || event.extendedProps.clientPhone;
+    if (phone) {
+      document.getElementById('popoverPhone').textContent = phone;
+      phoneContainer.style.display = 'flex';
+    } else {
+      phoneContainer.style.display = 'none';
+    }
+
+    const startTime = event.start.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    const endTime = event.end ? event.end.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
+    document.getElementById('popoverTime').textContent = endTime ? `${startTime} - ${endTime}` : startTime;
+
+    const statusDisplay = event.extendedProps.statusDisplay || 'Agendado';
+    document.getElementById('popoverStatus').textContent = statusDisplay;
+
+    // Position popover
+    if (spaceBelow < popoverHeight && spaceAbove > spaceBelow) {
+      popover.style.left = `${rect.left + window.scrollX}px`;
+      popover.style.top = `${rect.top + window.scrollY - popoverHeight - 5}px`;
+    } else {
+      popover.style.left = `${rect.left + window.scrollX}px`;
+      popover.style.top = `${rect.bottom + window.scrollY + 5}px`;
+    }
+
+    // Ensure visible before animation (robust to CSS overrides)
+    popover.style.display = 'block';
+    // Use requestAnimationFrame for smoother animations
+    requestAnimationFrame(() => { popover.classList.add('show'); });
+
+    const editBtn = document.getElementById('popoverEditBtn');
+    if (editBtn) {
+      editBtn.onclick = () => {
+        popover.classList.remove('show');
+        popover.style.display = 'none';
+        try { document.removeEventListener('click', closePopoverHandler, true); } catch (e) { try { document.removeEventListener('click', closePopoverHandler); } catch (_) {} }
+        closePopoverHandler = null;
+        openEditModal(event);
+      };
+    }
+
+    // Close button (top-right)
+    const closeBtn = document.getElementById('popoverCloseBtn');
+    if (closeBtn) {
+      closeBtn.onclick = () => {
+        popover.classList.remove('show');
+        popover.style.display = 'none';
+        try { document.removeEventListener('click', closePopoverHandler, true); } catch (e) { try { document.removeEventListener('click', closePopoverHandler); } catch (_) {} }
+        closePopoverHandler = null;
+      };
+    }
+
+    // Info icon: ao passar o mouse, buscar detalhes do evento e mostrar tooltip
+    const infoIcon = document.getElementById('popoverInfoIcon');
+    const metaTip = document.getElementById('popoverMeta');
+    let cachedDetail = null;
+
+    infoIcon.onmouseenter = async (e) => {
+      try {
+        // buscar detalhe do evento apenas uma vez
+        if (!cachedDetail) cachedDetail = await api.get(`/api/events/${event.id}/`);
+        const d = cachedDetail;
+        const createdAt = d.created_at || d.createdAt || '';
+        const updatedAt = d.updated_at || d.updatedAt || '';
+        const createdBy = d.created_by_username || d.created_by || '';
+        const updatedBy = d.updated_by_username || d.updated_by || '';
+
+        // Formatar datas de forma curta e amigável para usuário (pt-BR)
+        const fmt = (iso) => {
+          if (!iso) return '—';
+          try {
+            const dt = new Date(iso);
+            return dt.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+          } catch (e) { return iso; }
+        };
+
+        metaTip.innerHTML = `
+            <div><strong>Criado:</strong> ${fmt(createdAt)}</div>
+            <div><strong>Criado por:</strong> ${createdBy || '—'}</div>
+            <div><strong>Atualizado:</strong> ${fmt(updatedAt)}</div>
+            <div><strong>Atualizado por:</strong> ${updatedBy || '—'}</div>
+          `;
+
+        // posicionar próximo ao ícone
+        const r = infoIcon.getBoundingClientRect();
+        const left = Math.min(window.innerWidth - 300, r.right + 6 + window.scrollX);
+        const top = r.top + window.scrollY - 6;
+        metaTip.style.left = `${left}px`;
+        metaTip.style.top = `${top}px`;
+        metaTip.style.display = 'block';
+      } catch (err) {
+        console.error('Erro ao buscar metadados do evento:', err);
+      }
+    };
+
+    infoIcon.onmouseleave = () => {
+      // esconder com pequeno delay para permitir mover o mouse ao tooltip
+      setTimeout(() => { if (metaTip) metaTip.style.display = 'none'; }, 100);
+    };
+
+    // esconder tooltip se o mouse sair do próprio tooltip
+    metaTip.onmouseleave = () => { metaTip.style.display = 'none'; };
+
+    setTimeout(() => {
+      closePopoverHandler = (e) => {
+        try {
+          const clickedInside = popover.contains(e.target) || (info && info.el && info.el.contains(e.target));
+          if (!clickedInside) {
+            popover.classList.remove('show');
+            popover.style.display = 'none';
+            try { document.removeEventListener('click', closePopoverHandler, true); } catch (er) { try { document.removeEventListener('click', closePopoverHandler); } catch (_) {} }
+            closePopoverHandler = null;
+          }
+        } catch (err) {
+          // defensive: ensure listener removed
+          try { document.removeEventListener('click', closePopoverHandler, true); } catch (_) { }
+          closePopoverHandler = null;
+        }
+      };
+      // use capture to get clicks earlier and avoid other handlers stopping propagation
+      document.addEventListener('click', closePopoverHandler, true);
+    }, 10);
+  }
+</script>

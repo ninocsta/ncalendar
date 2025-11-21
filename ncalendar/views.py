@@ -4,4 +4,5 @@ from django.contrib.auth.decorators import login_required
 
 @login_required
 def calendar_page(request):
-    return render(request, "ncalendar/calendar.html")
+    # Render the calendar-specific template which imports FullCalendar and minicalendar assets
+    return render(request, "calendar.html")

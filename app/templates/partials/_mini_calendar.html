@@ -1,0 +1,10 @@
+<!-- Mini calendar partial -->
+<aside class="sidebar">
+  <calendar-date id="miniCalendar" class="shadow-sm p-2 mb-4">
+    <i aria-label="Previous" slot="previous" class="bi bi-chevron-left"></i>
+    <i aria-label="Next" slot="next" class="bi bi-chevron-right"></i>
+    <calendar-month></calendar-month>
+  </calendar-date>
+
+  {% block sidebar_content %}{% endblock %}
+</aside>

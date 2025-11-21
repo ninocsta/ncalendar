@@ -1,0 +1,115 @@
+<script>
+  // openModal (criar) — usa referências locais ao DOM para ser independente
+  async function openModal(info) {
+    const modal = document.getElementById('eventModal');
+    const form = document.getElementById('eventForm');
+
+    form.reset();
+    const ef = document.getElementById('eventFormErrors'); if (ef) { ef.style.display = 'none'; ef.innerHTML = ''; }
+    const ncf = document.getElementById('newClientErrors'); if (ncf) { ncf.style.display = 'none'; ncf.innerHTML = ''; }
+    document.getElementById('eventId').value = '';
+    document.getElementById('modalTitle').textContent = 'Novo Agendamento';
+    document.getElementById('submitBtn').textContent = 'Salvar';
+    document.getElementById('statusContainer').style.display = 'none';
+
+    $('#client, #service').off('change');
+    $(document).off('input', '.select2-container--open .select2-search__field');
+
+    destroySelect2('#professional');
+    $('#professional').append(
+      calendar.getResources().map(r => `<option value="${r.id}">${r.title}</option>`)
+    );
+    initSelect2('professional', { placeholder: 'Selecione um profissional' });
+    if (info && info.resource) $('#professional').val(info.resource.id).trigger('change');
+
+    $('#professional').off('change');
+    $('#professional').on('change', async function () {
+      const professionalId = $(this).val();
+      if (!professionalId) return;
+      $('#duration').val('');
+      $('#value').val('');
+
+      destroySelect2('#service');
+      const services = await api.get(`/api/services/?professional=${professionalId}`);
+      $('#service').append('<option></option>');
+      services.forEach(s => { $('#service').append(`<option value="${s.id}" data-duration="${s.duration_minutes}" data-value="${s.value}">${s.name}</option>`); });
+      initSelect2('service', { placeholder: 'Selecione o serviço' });
+    });
+
+    try { $('#start').val((info && info.start ? new Date(info.start) : new Date()).toISOString().slice(0, 16)); }
+    catch (e) { $('#start').val(new Date().toISOString().slice(0, 16)); }
+
+    destroySelect2('#service');
+    const selectedProfessional = $('#professional').val();
+    if (selectedProfessional) {
+      const services = await api.get(`/api/services/?professional=${selectedProfessional}`);
+      $('#service').append('<option></option>');
+      services.forEach(s => { $('#service').append(`<option value="${s.id}" data-duration="${s.duration_minutes}" data-value="${s.value}">${s.name}</option>`); });
+    } else { $('#service').append('<option></option>'); }
+    initSelect2('service', { placeholder: 'Selecione o serviço' });
+
+    $('#service').on('change', function () { const opt = $(this).find(':selected'); $('#duration').val(opt.data('duration') || ''); $('#value').val(opt.data('value') || ''); });
+
+    destroySelect2('#client');
+    initSelect2('client', {
+      placeholder: 'Digite o nome do cliente...', minimumInputLength: 2, tags: true, allowClear: true,
+      ajax: { url: '/api/clients/', data: params => ({ q: params.term }), processResults: data => ({ results: data.map(c => ({ id: c.id, text: c.name })) }), cache: false },
+      createTag: (params) => { const term = $.trim(params.term); if (!term) return null; return { id: 'new:' + encodeURIComponent(term), text: `Adicionar "${term}"`, newTag: true, name: term }; },
+      templateResult: (item) => { if (!item.id) return item.text; if (item.newTag) return $(`<span><strong>+</strong> ${item.text}</span>`)[0]; return item.text; },
+      templateSelection: (item) => { if (item.newTag) return ''; return item.text; }, escapeMarkup: (m) => m
+    });
+
+    $('#client').on('select2:select', function (e) {
+      const data = e.params.data;
+      if (data.newTag) { const name = data.name || data.text || ''; showNewClientForm(name); } else { showClientSelect(); }
+    });
+
+    $('#client').on('select2:unselect', function () { showClientSelect(); });
+
+    $(document).on('input', '.select2-container--open .select2-search__field', function () {
+      const val = $('#client').val(); if (val && !String(val).startsWith('new:')) { $('#client').val(null).trigger('change'); }
+    });
+
+    function showNewClientForm(name = '') {
+      document.getElementById('clientSelectContainer').style.display = 'none';
+      document.getElementById('newClientContainer').style.display = 'block';
+      document.getElementById('newClientName').value = name;
+      document.getElementById('newClientName').required = true;
+      document.getElementById('newClientPhone').required = false;
+      document.getElementById('newClientErrors').style.display = 'none';
+      setTimeout(() => document.getElementById('newClientName').focus(), 100);
+    }
+
+    function showClientSelect() {
+      document.getElementById('clientSelectContainer').style.display = 'block';
+      document.getElementById('newClientContainer').style.display = 'none';
+      document.getElementById('newClientName').value = '';
+      document.getElementById('newClientPhone').value = '';
+      document.getElementById('newClientName').required = false;
+      document.getElementById('newClientPhone').required = false;
+    }
+
+    document.getElementById('cancelNewClient').onclick = () => { showClientSelect(); $('#client').val(null).trigger('change'); const ncf = document.getElementById('newClientErrors'); if (ncf) { ncf.style.display = 'none'; ncf.innerHTML = ''; } };
+
+    document.getElementById('saveNewClient').onclick = async () => {
+      const name = document.getElementById('newClientName').value.trim();
+      const phone = document.getElementById('newClientPhone').value.trim();
+      if (!name) { showToast('error', 'Nome é obrigatório'); return; }
+      try {
+        const payload = { name }; if (phone) payload.phone = phone;
+        const created = await api.post('/api/clients/', payload);
+        $('#client').empty().append(new Option(created.name, created.id, true, true));
+        $('#client').val(created.id).trigger('change');
+        showToast('success', 'Cliente criado com sucesso!');
+        document.getElementById('newClientErrors').style.display = 'none'; showClientSelect();
+      } catch (err) { renderErrors(document.getElementById('newClientErrors'), err); }
+    };
+
+    try {
+      if (modal) {
+        const bs = bootstrap.Modal.getOrCreateInstance(modal);
+        bs.show();
+      }
+    } catch (e) { console.warn('Unable to open Bootstrap modal', e); }
+  }
+</script>

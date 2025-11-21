@@ -1,0 +1,93 @@
+<!-- Modal Agendamento -->
+<div class="modal fade" id="eventModal" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-md modal-dialog-centered"> <!-- modal-md deixa ele mais estreito -->
+        <div class="modal-content shadow-lg rounded-4" style="border: none;">
+
+            <!-- HEADER -->
+            <div class="modal-header" style="background: #7b2cbf; color: white;">
+                <h5 class="modal-title" id="modalTitle">Novo Agendamento</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+
+            <!-- FORM -->
+            <form id="eventForm" class="needs-validation" novalidate>
+                <div class="modal-body px-4 py-3">
+
+                    <div id="eventFormErrors" class="alert alert-danger py-1 px-2 small" style="display:none"></div>
+                    <input type="hidden" id="eventId" />
+
+                    <!-- Profissional -->
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold text-purple">Profissional</label>
+                        <select id="professional" class="form-select border-purple" required></select>
+                    </div>
+
+                    <!-- Cliente -->
+                    <div id="clientSelectContainer" class="mb-3">
+                        <label class="form-label fw-semibold text-purple">Cliente</label>
+                        <select id="client" class="form-select border-purple" required></select>
+                    </div>
+
+                    <!-- Novo Cliente -->
+                    <div id="newClientContainer" class="border rounded p-3"
+                        style="display:none; border-color:#c77dff !important; background:#faf5ff;">
+                        <div id="newClientErrors" class="alert alert-danger py-1 px-2 small" style="display:none"></div>
+
+                        <label class="form-label fw-semibold text-purple">Nome do Cliente</label>
+                        <input id="newClientName" type="text" class="form-control border-purple mb-2" />
+
+                        <label class="form-label fw-semibold text-purple">Telefone do Cliente</label>
+                        <input id="newClientPhone" type="text" class="form-control border-purple" placeholder="(00) 00000-0000" />
+
+                        <div class="d-flex justify-content-end gap-2 mt-3">
+                            <button type="button" id="cancelNewClient" class="btn btn-sm btn-outline-secondary">Cancelar</button>
+                            <button type="button" id="saveNewClient" class="btn btn-sm text-white" style="background:#9d4edd;">Salvar Cliente</button>
+                        </div>
+                    </div>
+
+                    <!-- Serviço -->
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold text-purple">Serviço</label>
+                        <select id="service" class="form-select border-purple" required></select>
+                    </div>
+
+                    <!-- Duração e Valor -->
+                    <div class="row g-3">
+                        <div class="col-6">
+                            <label class="form-label fw-semibold text-purple">Duração (min)</label>
+                            <input id="duration" type="number" min="5" class="form-control border-purple" required />
+                        </div>
+
+                        <div class="col-6">
+                            <label class="form-label fw-semibold text-purple">Valor R$</label>
+                            <input id="value" type="number" step="0.01" class="form-control border-purple" required />
+                        </div>
+                    </div>
+
+                    <!-- Data -->
+                    <div class="mt-3">
+                        <label class="form-label fw-semibold text-purple">Início</label>
+                        <input id="start" type="datetime-local" class="form-control border-purple" required />
+                    </div>
+
+                    <!-- Status -->
+                    <div id="statusContainer" style="display:none;" class="mt-3">
+                        <label class="form-label fw-semibold text-purple">Status</label>
+                        <select id="status" class="form-select border-purple"></select>
+                    </div>
+                </div>
+
+                <!-- FOOTER -->
+                <div class="modal-footer bg-light rounded-bottom-4">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                        Fechar
+                    </button>
+                    <button type="submit" id="submitBtn" class="btn text-white px-4" style="background:#7b2cbf;">
+                        Salvar
+                    </button>
+                </div>
+            </form>
+
+        </div>
+    </div>
+</div>

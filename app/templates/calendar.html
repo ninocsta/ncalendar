@@ -1,0 +1,24 @@
+{% extends 'base.html' %}
+
+{% block title %}Agenda - Calendário{% endblock %}
+
+{% block extra_css %}
+  {% include 'partials/_calendar_assets.html' %}
+{% endblock %}
+
+{% block content %}
+<div id="calendar"></div>
+
+{% include 'ncalendar/partials/_event_popover.html' %}
+{% include 'ncalendar/partials/_event_modal.html' %}
+
+{% endblock %}
+
+{% block extra_js %}
+{% include 'ncalendar/partials/_calendar_popover_script.html' %}
+
+{% include 'ncalendar/partials/_calendar_helpers.html' %}
+{% include 'ncalendar/partials/_calendar_create_script.html' %}
+{% include 'ncalendar/partials/_calendar_edit_script.html' %}
+{% include 'ncalendar/partials/_calendar_main_script.html' %}
+{% endblock %}

@@ -1,0 +1,61 @@
+<script>
+// Helpers extraídos de calendar.html
+function getCookie(name) {
+  const match = document.cookie.match(new RegExp('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)'));
+  return match ? match.pop() : '';
+}
+
+const api = {
+  get: (url) => fetch(url, { credentials: 'same-origin' }).then(r => r.ok ? r.json() : Promise.reject(r)),
+  post: (url, data) => fetch(url, {
+    method: 'POST', credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+    body: JSON.stringify(data)
+  }).then(async (r) => { const json = await r.json().catch(() => null); return r.ok ? json : Promise.reject(json || { detail: r.statusText }); }),
+  put: (url, data) => fetch(url, {
+    method: 'PUT', credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+    body: JSON.stringify(data)
+  }).then(async (r) => { const json = await r.json().catch(() => null); return r.ok ? json : Promise.reject(json || { detail: r.statusText }); })
+};
+
+const destroySelect2 = (selector) => {
+  const $el = $(selector);
+  if ($el.data('select2')) $el.select2('destroy');
+  $el.empty();
+};
+
+const initSelect2 = (id, options = {}) => {
+  const modal = document.getElementById('eventModal');
+  const dropdownParent = options.dropdownParent || $(modal);
+  $(`#${id}`).select2({ dropdownParent, width: '100%', ...options });
+};
+
+function renderErrors(container, err) {
+  if (!container) return;
+  container.style.display = 'none';
+  container.innerHTML = '';
+  if (!err) return;
+  const mk = (msg) => `<div>${escapeHtml(String(msg))}</div>`;
+  if (typeof err === 'string') { container.innerHTML = mk(err); container.style.display = 'block'; return; }
+  if (err.detail) { container.innerHTML = mk(err.detail); container.style.display = 'block'; return; }
+  if (Array.isArray(err)) { container.innerHTML = err.map(e => mk(e)).join(''); container.style.display = 'block'; return; }
+  if (typeof err === 'object') {
+    let html = '';
+    Object.keys(err).forEach(k => {
+      const v = err[k];
+      if (Array.isArray(v)) v.forEach(item => { html += `<div><strong>${escapeHtml(k)}:</strong> ${escapeHtml(item)}</div>`; });
+      else if (typeof v === 'object') html += `<div><strong>${escapeHtml(k)}:</strong> ${escapeHtml(JSON.stringify(v))}</div>`;
+      else html += `<div><strong>${escapeHtml(k)}:</strong> ${escapeHtml(v)}</div>`;
+    });
+    container.innerHTML = html; container.style.display = 'block'; return;
+  }
+  container.innerHTML = mk('Erro ao enviar formulário'); container.style.display = 'block';
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>\"'`]/g, function (c) {
+    return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;', '`': '&#96;' })[c];
+  });
+}
+</script>

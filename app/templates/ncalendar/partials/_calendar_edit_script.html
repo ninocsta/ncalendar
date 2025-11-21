@@ -1,0 +1,78 @@
+<script>
+  // openEditModal (editar)
+  async function openEditModal(event) {
+    const modal = document.getElementById('eventModal');
+    const form = document.getElementById('eventForm');
+
+    $('#client, #service').off('change');
+    $(document).off('input', '.select2-container--open .select2-search__field');
+
+    document.getElementById('eventId').value = event.id;
+    document.getElementById('modalTitle').textContent = 'Editar Agendamento';
+    document.getElementById('submitBtn').textContent = 'Atualizar';
+    document.getElementById('statusContainer').style.display = 'block';
+
+    const eventData = await api.get(`/api/events/${event.id}/`);
+
+    destroySelect2('#professional');
+    $('#professional').append(
+      calendar.getResources().map(r => `<option value="${r.id}">${r.title}</option>`)
+    );
+    initSelect2('professional', { placeholder: 'Selecione um profissional' });
+    $('#professional').val(eventData.professional).trigger('change');
+
+    $('#professional').off('change');
+    $('#professional').on('change', async function () {
+      const professionalId = $(this).val();
+      if (!professionalId) return;
+      $('#duration').val(''); $('#value').val('');
+      destroySelect2('#service');
+      const services = await api.get(`/api/services/?professional=${professionalId}`);
+      $('#service').append('<option></option>');
+      services.forEach(s => { $('#service').append(`<option value="${s.id}" data-duration="${s.duration_minutes}" data-value="${s.value}">${s.name}</option>`); });
+      initSelect2('service', { placeholder: 'Selecione o serviço' });
+    });
+
+    $('#start').val(new Date(event.start).toISOString().slice(0, 16));
+
+    destroySelect2('#service');
+    const profIdForEdit = eventData.professional || $('#professional').val();
+    if (profIdForEdit) {
+      const services = await api.get(`/api/services/?professional=${profIdForEdit}`);
+      $('#service').append('<option></option>');
+      services.forEach(s => { $('#service').append(`<option value="${s.id}" data-duration="${s.duration_minutes}" data-value="${s.value}">${s.name}</option>`); });
+    } else { $('#service').append('<option></option>'); }
+    initSelect2('service', { placeholder: 'Selecione o serviço' });
+    $('#service').val(eventData.service).trigger('change');
+
+    $('#service').on('change', function () { const opt = $(this).find(':selected'); $('#duration').val(opt.data('duration') || ''); $('#value').val(opt.data('value') || ''); });
+
+    // clients
+    destroySelect2('#client');
+    const clients = await api.get('/api/clients/');
+    clients.forEach(c => { $('#client').append(`<option value="${c.id}">${c.name}</option>`); });
+    initSelect2('client', { placeholder: 'Selecione o cliente' });
+    $('#client').val(eventData.client).trigger('change');
+
+    let durationMinutes = 0;
+    if (eventData.duration_minutes) durationMinutes = eventData.duration_minutes;
+    else if (event.end && event.start) durationMinutes = Math.round((new Date(event.end) - new Date(event.start)) / 60000);
+    $('#duration').val(durationMinutes);
+    $('#value').val(eventData.value || '');
+
+    $('#status').empty();
+    if (window.statusChoices && window.statusChoices.length > 0) {
+      window.statusChoices.forEach(s => { $('#status').append(`<option value="${s.value}">${s.label}</option>`); });
+    } else {
+      $('#status').append(`\n      <option value="1">Agendado</option>\n      <option value="2">Concluído</option>\n      <option value="3">Cancelado</option>\n      <option value="4">Não compareceu</option>\n      <option value="6">Em andamento</option>\n      <option value="7">Pendente pagamento2</option>\n    `);
+    }
+    $('#status').val(eventData.status || 1);
+
+    try {
+      if (modal) {
+        const bs = bootstrap.Modal.getOrCreateInstance(modal);
+        bs.show();
+      }
+    } catch (e) { console.warn('Unable to open Bootstrap modal', e); }
+  }
+</script>

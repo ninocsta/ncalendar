@@ -1,0 +1,101 @@
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const modal = document.getElementById('eventModal');
+  const form = document.getElementById('eventForm');
+  const miniCalendar = document.getElementById('miniCalendar');
+  window.calendar = null;
+  window.statusChoices = [];
+
+  // Initialize FullCalendar
+  window.calendar = new FullCalendar.Calendar(document.getElementById('calendar'), {
+    schedulerLicenseKey: 'CC-Attribution-NonCommercial-NoDerivatives',
+    initialView: 'resourceTimeGridDay',
+    locale: 'pt-br',
+    timeZone: 'America/Sao_Paulo',
+    slotMinTime: '04:00:00',
+    slotMaxTime: '24:00:00',
+    nowIndicator: true,
+    headerToolbar: { left: 'prev,next today', center: 'title', right: ''},
+    resources: '/api/professionals/',
+    events: '/api/events/',
+    selectable: true,
+    selectOverlap: false,
+    select: openModal,
+    eventClick: showEventPopover,
+    datesSet: syncMiniCalendar
+  });
+
+  window.calendar.render();
+
+  function syncMiniCalendar(info) {
+    const calendarDate = window.calendar.getDate();
+    if (miniCalendar && miniCalendar.value !== calendarDate.toISOString().split('T')[0]) {
+      miniCalendar.value = calendarDate.toISOString().split('T')[0];
+    }
+  }
+
+  if (miniCalendar) {
+    miniCalendar.addEventListener('change', (e) => {
+      const selectedDate = new Date(e.target.value + 'T12:00:00');
+      window.calendar.gotoDate(selectedDate);
+    });
+  }
+
+  api.get('/api/events/status_choices/').then(choices => { window.statusChoices = choices; }).catch(err => { console.error('Erro ao carregar status:', err); });
+
+  // Submit do formulário (criar/editar)
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    const eventId = document.getElementById('eventId').value;
+    const isEdit = !!eventId;
+    const clientVal = $('#client').val();
+    let clientId = clientVal;
+    if (clientVal && String(clientVal).startsWith('new:')) {
+      const name = decodeURIComponent(String(clientVal).slice(4));
+      const phoneInput = document.getElementById('newClientPhone');
+      const phone = phoneInput ? (phoneInput.value || '').trim() : '';
+      try {
+        const payload = { name }; if (phone) payload.phone = phone;
+        const created = await api.post('/api/clients/', payload);
+        clientId = created.id;
+        $('#client').empty().append(new Option(created.name, created.id, true, true));
+        $('#client').val(created.id).trigger('change');
+        showToast('success', 'Cliente criado com sucesso!');
+      } catch (err) { renderErrors(document.getElementById('eventFormErrors'), err); return; }
+    }
+
+    const payload = { professional: $('#professional').val(), client: clientId, service: $('#service').val(), start: $('#start').val(), duration_minutes: parseInt($('#duration').val()), value: parseFloat($('#value').val()) };
+    if (isEdit) payload.status = $('#status').val();
+
+    try {
+      if (isEdit) { await api.put(`/api/events/${eventId}/`, payload); showToast('success', 'Agendamento atualizado!'); }
+      else { await api.post('/api/events/', payload); showToast('success', 'Agendamento criado!'); }
+      window.calendar.refetchEvents(); window.calendar.unselect();
+      try {
+        if (modal) {
+          const bs = bootstrap.Modal.getOrCreateInstance(modal);
+          bs.hide();
+        }
+      } catch (e) { try { if (modal) modal.removeAttribute('open'); } catch (_) {} }
+    } catch (err) { renderErrors(document.getElementById('eventFormErrors'), err); }
+  };
+
+  // Fechar modal cleanup
+  if (modal) {
+    // Handle Bootstrap modal hidden event
+    $(modal).on('hidden.bs.modal', () => {
+      form.reset();
+      destroySelect2('#professional');
+      destroySelect2('#client');
+      destroySelect2('#service');
+      $('#professional').off('change');
+      $('#client, #service').off('change');
+      $(document).off('input', '.select2-container--open .select2-search__field');
+      const ef = document.getElementById('eventFormErrors'); if (ef) { ef.style.display = 'none'; ef.innerHTML = ''; }
+      const ncf = document.getElementById('newClientErrors'); if (ncf) { ncf.style.display = 'none'; ncf.innerHTML = ''; }
+      const phoneContainer = document.getElementById('phoneContainer'); if (phoneContainer) phoneContainer.style.display = 'none';
+      const clientPhone = document.getElementById('clientPhone'); if (clientPhone) clientPhone.required = false;
+    });
+  }
+});
+</script>

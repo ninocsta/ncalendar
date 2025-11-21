@@ -1,0 +1,71 @@
+<!-- Popover do Evento (estilo roxo, cartão moderno) -->
+<div id="eventPopover" style="position:absolute; z-index:50; display:none;">
+  <div class="card shadow-lg border-0 rounded-4" style="width:19rem; background:#ffffff; position:relative;">
+    <div class="card-body p-3">
+
+      <!-- Título + botão info -->
+      <div class="d-flex align-items-center">
+        <h6 class="card-title mb-0 fw-bold" id="popoverTitle" style="color:#5a189a;"></h6>
+
+        <button id="popoverInfoIcon"
+                class="btn btn-sm p-1 ms-auto"
+                type="button"
+                aria-label="Info"
+                style="border-radius:50%; border:1px solid #c77dff; color:#7b2cbf;">
+          <i class="bi bi-info-circle"></i>
+        </button>
+      </div>
+
+      <!-- Conteúdo -->
+      <div class="mt-3 small" style="color:#4c4c4c;">
+
+        <div class="d-flex align-items-center mb-2">
+          <i class="bi bi-person-fill me-2" style="color:#9d4edd;"></i>
+          <span id="popoverClient" class="fw-semibold"></span>
+        </div>
+
+        <div class="d-flex align-items-center mb-2" id="popoverPhoneContainer">
+          <i class="bi bi-telephone-fill me-2" style="color:#7b2cbf;"></i>
+          <span id="popoverPhone"></span>
+        </div>
+
+        <div class="d-flex align-items-center mb-2">
+          <i class="bi bi-clock me-2" style="color:#7b2cbf;"></i>
+          <span id="popoverTime"></span>
+        </div>
+
+        <div class="d-flex align-items-center">
+          <i class="bi bi-check-circle-fill me-2" style="color:#5a189a;"></i>
+          <span id="popoverStatus" class="fw-semibold" style="color:#5a189a;"></span>
+        </div>
+
+      </div>
+
+
+      <div class="d-flex justify-content-end mt-3">
+        <button type="button" class="btn btn-sm btn-outline-secondary px-3 me-1" id="popoverCloseBtn" >Fechar</button>
+        <button class="btn btn-sm text-white px-3"
+                id="popoverEditBtn"
+                style="background:#7b2cbf; border-radius:6px;">
+          Editar
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Tooltip/metadados do popover -->
+<div id="popoverMeta"
+     style="
+        display:none;
+        position:fixed;
+        z-index:1200;
+        background:#ffffff;
+        border:1px solid #e9d8ff;
+        padding:10px;
+        border-radius:8px;
+        font-size:0.85rem;
+        box-shadow:0 8px 22px rgba(123, 44, 191, 0.12);
+        color:#4c4c4c;
+     ">
+</div>
